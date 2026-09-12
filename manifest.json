@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Boss高情商回复助手",
+  "version": "1.5.0",
+  "description": "在 Boss 直聘聊天中生成自然、得体的回复草稿。",
+  "permissions": ["storage", "activeTab", "clipboardWrite", "tabs"],
+  "host_permissions": [
+    "https://www.zhipin.com/*",
+    "https://zhipin.com/*",
+    "https://api-inference.modelscope.cn/*",
+    "https://*.modelscope.cn/*",
+    "https://dashscope.aliyuncs.com/*"
+  ],
+  "action": {
+    "default_title": "Boss高情商回复助手",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.zhipin.com/*", "https://zhipin.com/*"],
+      "js": ["page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.zhipin.com/*", "https://zhipin.com/*"],
+      "js": ["vendor/pdf.min.js", "vendor/mammoth.browser.min.js", "content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/pdf.worker.min.js"],
+      "matches": ["https://www.zhipin.com/*", "https://zhipin.com/*"]
+    }
+  ]
+}

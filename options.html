@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>设置 - Boss高情商回复助手</title>
+  <style>
+    body{max-width:720px;margin:40px auto;padding:0 20px;font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif;color:#1f2329}
+    h1{font-size:24px}h2{font-size:17px;margin:30px 0 8px;border-top:1px solid #eee;padding-top:22px}
+    label{display:block;margin:18px 0 6px;font-size:14px;font-weight:600}
+    input{width:100%;box-sizing:border-box;border:1px solid #d9dce3;border-radius:8px;padding:9px;font:inherit}
+    .save,.test,.open,.clear{margin-top:20px;color:#fff;border:0;border-radius:8px;padding:10px 22px;cursor:pointer}
+    .save,.open{background:#1677ff}.test{background:#4e5969;margin-left:8px}.clear{background:#fff;color:#d4380d;border:1px solid #ffccc7;margin-left:8px}
+    .tip{color:#646a73;font-size:13px;line-height:1.6}.warning{background:#fff7e6;border:1px solid #ffd591;border-radius:8px;padding:10px;font-size:13px;line-height:1.5;color:#8b5e00}
+    .resume{background:#f7f8fa;border-radius:10px;padding:14px;margin-top:12px;font-size:13px;line-height:1.7}.resume strong{display:block;font-size:14px}.resume pre{white-space:pre-wrap;max-height:210px;overflow:auto;color:#646a73;font-family:inherit}.ok{color:#168f48}.muted{color:#8f959e}
+  </style>
+</head>
+<body>
+  <h1>插件设置</h1>
+  <p class="tip">配置一个大模型服务后，会根据 HR 对话、岗位信息、Boss 在线简历和附件简历动态生成回复。支持魔搭社区和阿里云百炼；只有点击“生成回复”或“测试连接”时才会调用 API。</p>
+  <h2>大模型 API</h2>
+  <div class="warning">API Key 只保存在当前浏览器的扩展本地存储中。请勿把 Key 分享给他人；如担心泄露，可随时在对应平台控制台撤销并重新生成。</div>
+  <label>服务商</label><select id="provider" style="width:100%;box-sizing:border-box;border:1px solid #d9dce3;border-radius:8px;padding:9px;font:inherit"><option value="modelscope">魔搭社区（ModelScope）</option><option value="bailian">阿里云百炼（DashScope）</option></select>
+  <label>API Key</label><input id="apiKey" type="password" autocomplete="off">
+  <label>接口地址</label><input id="endpoint">
+  <label>模型名称</label><input id="model"><br>
+  <button class="save" id="save">保存设置</button><button class="test" id="test">测试连接</button><span id="status" style="margin-left:12px;color:#1677ff;font-size:13px"></span>
+  <h2>Boss 在线简历</h2>
+  <p class="tip">访问一次 Boss 直聘“我的简历”页面后，插件会自动读取并在本地保存在线简历，无需点击同步。PDF/Word 附件请直接拖入聊天页的助手面板进行本地解析。</p>
+  <button class="open" id="openResume">打开 Boss 简历页并自动读取</button><button class="clear" id="clearResume">清除已读取简历</button>
+  <div class="resume" id="resumeInfo"><strong>尚未自动读取</strong><span class="muted">访问 Boss 简历页后将自动读取。</span></div>
+  <h2>Boss 岗位读取</h2>
+  <p class="tip">助手窗口关闭时不会读取岗位。打开助手后，请在左侧选择聊天，再手动点击聊天中的岗位名称或薪资区域打开 Boss 职位详情页；详情页加载完成后插件会自动读取最新 JD 并缓存，最多保存最近 5 个完整 JD。插件不会模拟点击、自动新开或关闭你手动打开的职位页，也不会调用大模型。</p>
+  <button class="clear" id="clearJobs" style="margin-left:0">清除岗位缓存</button>
+  <div class="resume" id="jobInfo"><strong>尚未读取岗位</strong><span class="muted">打开助手窗口并在左侧选择聊天后读取。</span></div>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+node_modules/
+*.zip
+*.crx
+*.pem
+.env
+.env.*
+dist/
+build/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini

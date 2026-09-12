@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "vendor": "node scripts/copy-vendor.js"
+  },
+  "devDependencies": {
+    "mammoth": "1.8.0",
+    "pdfjs-dist": "3.11.174"
+  }
+}
