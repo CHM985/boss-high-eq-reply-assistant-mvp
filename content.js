@@ -26,7 +26,17 @@
   };
 
   function findComposer() {
-    return qs(['textarea', '[contenteditable="true"]', 'input[placeholder*="请输入"]', 'input[placeholder*="消息"]']);
+    // Boss 新版（含 AI 筛选）会保留一个尺寸为 0 的 textarea.input 模板，
+    // 真正的聊天编辑区通常是可见的 #chat-input / .chat-input。优先选择可见节点，
+    // 否则会把聊天范围判成 document，进而读不到当前会话。
+    const selectors = ['[contenteditable="true"]', '#chat-input', '.chat-input', 'textarea', 'input[placeholder*="请输入"]', 'input[placeholder*="消息"]'];
+    const candidates = [...document.querySelectorAll(selectors.join(','))]
+      .filter(node => !node.closest('#bh-root'));
+    const visible = candidates.filter(node => isActuallyVisible(node));
+    const preferred = visible.find(node => node.isContentEditable || node.matches?.('[contenteditable="true"]'))
+      || visible.find(node => node.matches?.('#chat-input,.chat-input'))
+      || visible.find(node => node.matches?.('textarea,input'));
+    return preferred || candidates[0] || null;
   }
 
   function findConversationScope() {
@@ -70,12 +80,13 @@
     // 新版 Boss 页面可能有数千个筛选/推荐节点，限制候选数量避免首次点击时阻塞主线程。
     const nodes = [...scope.querySelectorAll(roots.join(','))].slice(-360)
       .filter(n => !n.closest('#bh-root') && !n.closest('button, textarea, input'))
-      .filter(n => !/ai|筛选|推荐|candidate|职位卡|job-card|resume|简历|toolbar|sidebar|header|footer/i.test(String(n.className || '')))
+      .filter(n => !/ai|筛选|推荐|candidate|职位卡|job-card|resume|简历|toolbar|controls|message-card|card-top|sidebar|header|footer/i.test(String(n.className || '')))
       .filter(isInActiveChatArea)
       .filter(n => {
         const text = (n.innerText || '').trim();
         if (!text || text.length > 300) return false;
         if (/^(AI筛选|智能筛选|相关推荐|快捷回复|查看职位|生成回复|拒绝|同意)$/.test(text)) return false;
+        if (/PK情况|竞争者|详细分析|发简历|换电话|换微信|按Enter键发送/i.test(text)) return false;
         return true;
       });
     let texts = nodes.map(n => (n.innerText || '').trim()).filter(Boolean);
@@ -85,8 +96,9 @@
       texts = [...scope.querySelectorAll('[class*="message"], [class*="msg"]')].slice(-360)
         .filter(n => !n.closest('#bh-root') && !n.closest('button, textarea, input'))
         .filter(isInActiveChatArea)
+        .filter(n => !/controls|toolbar|message-card|card-top|sidebar/i.test(String(n.className || '')))
         .map(n => (n.innerText || '').trim())
-        .filter(t => t && t.length <= 300);
+        .filter(t => t && t.length <= 300 && !/PK情况|竞争者|详细分析|发简历|换电话|换微信|按Enter键发送/i.test(t));
     }
     const unique = [];
     for (const text of texts) {
@@ -123,6 +135,7 @@
       role: String(node.getAttribute?.('role') || '').slice(0, 100),
       ariaLabel: String(node.getAttribute?.('aria-label') || '').slice(0, 160),
       placeholder: String(node.getAttribute?.('placeholder') || '').slice(0, 160),
+      contentEditable: Boolean(node.isContentEditable || node.getAttribute?.('contenteditable') === 'true'),
       visible: Boolean(node.getClientRects?.().length && style && style.display !== 'none' && style.visibility !== 'hidden'),
       rect: rect ? { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) } : null,
       textLength: String(node.innerText || node.textContent || '').trim().length,
@@ -154,7 +167,7 @@
   }
 
   function buildDiagnosticReport() {
-    const composerCandidates = [...document.querySelectorAll('textarea,[contenteditable="true"],input[placeholder*="请输入"],input[placeholder*="消息"]')]
+    const composerCandidates = [...document.querySelectorAll('#chat-input,.chat-input,textarea,[contenteditable="true"],input[placeholder*="请输入"],input[placeholder*="消息"]')]
       .filter(node => !node.closest('#bh-root'))
       .slice(0, 20);
     const composer = findComposer();
@@ -230,7 +243,7 @@
 
   function isConversationSwitchTarget(target) {
     if (!target || target.closest('#bh-root')) return false;
-    if (target.closest('textarea,input,[contenteditable="true"]')) return false;
+    if (target.closest('textarea,input,[contenteditable="true"],#chat-input,.chat-input,.editor-container')) return false;
     const text = (target.innerText || target.textContent || '').trim();
     if (text === '查看职位' || text === '生成回复' || text === '高情商回复') return false;
     const node = target.closest('[role="listitem"],[aria-selected],[aria-current],[class*="chat"],[class*="contact"],[class*="friend"],[class*="conversation"],[class*="session"]');
@@ -754,13 +767,19 @@
   function insertText(text) {
     const composer = findComposer();
     if (!composer) return false;
-    composer.focus();
-    if (composer.isContentEditable) {
+    const editable = composer.matches?.('textarea,input,[contenteditable="true"]') ? composer
+      : composer.querySelector?.('textarea,input,[contenteditable="true"]');
+    const target = editable || composer;
+    target.focus?.();
+    if (target.isContentEditable || target.getAttribute?.('contenteditable') === 'true') {
       document.execCommand('insertText', false, text);
+    } else if ('value' in target) {
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), 'value')?.set;
+      setter ? setter.call(target, text) : target.value = text;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
-      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(composer), 'value')?.set;
-      setter ? setter.call(composer, text) : composer.value = text;
-      composer.dispatchEvent(new Event('input', { bubbles: true }));
+      target.textContent = text;
+      target.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
     }
     return true;
   }
