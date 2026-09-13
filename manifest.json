@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Boss高情商回复助手",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "在 Boss 直聘聊天中生成自然、得体的回复草稿。",
   "permissions": ["storage", "activeTab", "clipboardWrite", "tabs"],
   "host_permissions": [

@@ -99,6 +99,121 @@
     return result;
   }
 
+  // 生成脱敏的页面结构报告，便于排查不同 Boss 布局（例如 AI 筛选卡片）
+  // 导出的内容只包含节点元数据、坐标、文本长度和少量首尾字符，不包含完整聊天或简历。
+  function diagnosticTextPreview(text) {
+    const value = String(text || '')
+      .replace(/1[3-9]\d{9}/g, '[手机号]')
+      .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[邮箱]')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!value) return '';
+    if (value.length <= 48) return value;
+    return `${value.slice(0, 24)}…${value.slice(-20)}`;
+  }
+
+  function diagnosticNode(node, includeText = true) {
+    if (!node) return null;
+    const rect = node.getBoundingClientRect?.();
+    const style = node.nodeType === Node.ELEMENT_NODE ? getComputedStyle(node) : null;
+    return {
+      tag: String(node.tagName || '').toLowerCase(),
+      id: String(node.id || '').slice(0, 100),
+      className: String(node.className || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+      role: String(node.getAttribute?.('role') || '').slice(0, 100),
+      ariaLabel: String(node.getAttribute?.('aria-label') || '').slice(0, 160),
+      placeholder: String(node.getAttribute?.('placeholder') || '').slice(0, 160),
+      visible: Boolean(node.getClientRects?.().length && style && style.display !== 'none' && style.visibility !== 'hidden'),
+      rect: rect ? { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) } : null,
+      textLength: String(node.innerText || node.textContent || '').trim().length,
+      textPreview: includeText ? diagnosticTextPreview(node.innerText || node.textContent || '') : ''
+    };
+  }
+
+  function diagnosticAncestors(node) {
+    const result = [];
+    let current = node?.parentElement;
+    for (let depth = 0; current && depth < 7; depth += 1, current = current.parentElement) {
+      result.push({
+        depth,
+        tag: String(current.tagName || '').toLowerCase(),
+        id: String(current.id || '').slice(0, 80),
+        className: String(current.className || '').replace(/\s+/g, ' ').trim().slice(0, 180)
+      });
+    }
+    return result;
+  }
+
+  function sanitizeDiagnosticUrl() {
+    try {
+      const url = new URL(location.href);
+      return `${url.origin}${url.pathname}`;
+    } catch (_) {
+      return location.origin + location.pathname;
+    }
+  }
+
+  function buildDiagnosticReport() {
+    const composerCandidates = [...document.querySelectorAll('textarea,[contenteditable="true"],input[placeholder*="请输入"],input[placeholder*="消息"]')]
+      .filter(node => !node.closest('#bh-root'))
+      .slice(0, 20);
+    const composer = findComposer();
+    const scope = findConversationScope();
+    const messageSelector = '[class*="message"],[class*="msg"],[class*="chat-item"],[class*="dialogue-item"],[data-message-id],[data-msg-id]';
+    const messageCandidates = [...(scope || document).querySelectorAll(messageSelector)]
+      .filter(node => !node.closest('#bh-root') && isActuallyVisible(node))
+      .slice(-80)
+      .map(node => diagnosticNode(node));
+    const aiCandidates = [...document.querySelectorAll('[class*="ai"],[class*="filter"],[class*="筛选"],[class*="recommend"],[class*="candidate"]')]
+      .filter(node => !node.closest('#bh-root') && isActuallyVisible(node))
+      .slice(0, 40)
+      .map(node => diagnosticNode(node));
+    const report = {
+      reportVersion: 1,
+      createdAt: new Date().toISOString(),
+      extensionVersion: chrome.runtime.getManifest?.().version || '',
+      page: {
+        url: sanitizeDiagnosticUrl(),
+        title: String(document.title || '').slice(0, 200),
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        activeMarker: diagnosticTextPreview(getActiveConversationMarker()),
+        currentJobKey: state.currentJob?.key || '',
+        currentJobHasUrl: Boolean(state.currentJob?.url),
+        currentJobSummaryLength: String(state.currentJob?.summary || '').length,
+        conversationLength: getConversation().length,
+        conversationHash: hashText(getConversation())
+      },
+      selected: {
+        composer: diagnosticNode(composer),
+        composerAncestors: diagnosticAncestors(composer),
+        conversationScope: diagnosticNode(scope, false),
+        conversationScopeAncestors: diagnosticAncestors(scope),
+        panel: diagnosticNode(state.panel, false),
+        mainButton: diagnosticNode(state.button, false)
+      },
+      composerCandidates: composerCandidates.map(node => diagnosticNode(node)),
+      messageCandidates,
+      aiCandidates
+    };
+    return report;
+  }
+
+  function exportDiagnosticReport() {
+    const report = buildDiagnosticReport();
+    const payload = JSON.stringify(report, null, 2);
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `boss-helper-diagnostic-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return report;
+  }
+
   function getActiveConversationMarker() {
     const nodes = [...document.querySelectorAll('[aria-selected="true"],[aria-current="true"],[class*="active"],[class*="selected"]')]
       .filter(node => !node.closest('#bh-root') && node.getClientRects().length)
@@ -696,7 +811,9 @@
       <div class="bh-job-state"></div>
       <label class="bh-upload"><input class="bh-file-input" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple><span>＋ 拖入或选择简历附件（PDF / Word）</span></label>
       <div class="bh-attachment-status"></div><button class="bh-clear-files" type="button">清除附件</button>
-      <div class="bh-status">调整选项后点击“生成回复”，此时才会调用大模型</div><div class="bh-context"></div>
+      <div class="bh-status">调整选项后点击“生成回复”，此时才会调用大模型</div>
+      <div class="bh-tools"><button class="bh-small bh-export-diagnostic" type="button">导出诊断信息</button><span class="bh-diagnostic-hint">仅本地保存脱敏页面结构</span></div>
+      <div class="bh-context"></div>
       <div><div style="font-size:12px;color:#646a73">回复目的</div><div class="bh-row" data-group="purpose"></div></div>
       <div><div style="font-size:12px;color:#646a73">语气</div><div class="bh-row" data-group="tone"></div></div>
       <div><div style="font-size:12px;color:#646a73">长度</div><div class="bh-row" data-group="length"></div></div>
@@ -737,6 +854,14 @@
     panel.querySelector('.bh-close').onclick = () => {
       panel.hidden = true;
       cancelActiveJobRead();
+    };
+    panel.querySelector('.bh-export-diagnostic').onclick = () => {
+      try {
+        exportDiagnosticReport();
+        panel.querySelector('.bh-status').textContent = '诊断信息已导出到本地下载目录';
+      } catch (error) {
+        panel.querySelector('.bh-status').textContent = `诊断信息导出失败：${error.message}`;
+      }
     };
     panel.querySelector('.bh-generate').onclick = generate;
     const upload = panel.querySelector('.bh-upload');

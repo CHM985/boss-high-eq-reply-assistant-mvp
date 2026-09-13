@@ -16,6 +16,8 @@
 .bh-card-actions { display:flex; gap:6px; margin-top:8px; }
 .bh-small { border:1px solid #d9dce3; border-radius:6px; background:#fff; padding:4px 8px; cursor:pointer; font-size:12px; color:#4e5969; }
 .bh-status { color:#8f959e; font-size:12px; min-height:18px; }
+.bh-tools { display:flex; align-items:center; gap:7px; margin:5px 0 2px; }
+.bh-diagnostic-hint { color:#9aa1ad; font-size:10px; }
 .bh-resume-state { color:#d46b08; background:#fff7e6; border-radius:7px; padding:7px 9px; margin-bottom:7px; font-size:12px; white-space:pre-wrap; line-height:1.65; }
 .bh-resume-state.ready { color:#168f48; background:#f0fff4; }
 .bh-job-state { color:#946200; background:#fffbe6; border-radius:7px; padding:7px 9px; margin-bottom:7px; font-size:12px; line-height:1.55; }
