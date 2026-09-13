@@ -2,7 +2,7 @@
 .bh-button { border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; color: #fff; background: linear-gradient(135deg,#1677ff,#635bff); font-size: 13px; box-shadow: 0 2px 8px rgba(22,119,255,.25); }
 .bh-button:hover { filter: brightness(1.05); }
 .bh-main-button { position: fixed; z-index: 2147483646; height: 42px; min-width: 160px; padding: 0 18px; font-size: 14px; }
-.bh-panel { position: fixed; z-index: 2147483647; right: 24px; bottom: 76px; width: 370px; max-width: calc(100vw - 16px); max-height: 76vh; overflow: auto; background: #fff; border: 1px solid #e8eaf0; border-radius: 14px; box-shadow: 0 12px 40px rgba(31,35,41,.18); padding: 16px; color: #1f2329; }
+.bh-panel { position: fixed; z-index: 2147483647; right: 24px; bottom: 76px; width: 370px; max-width: calc(100vw - 16px); max-height: 76vh; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: #fff; border: 1px solid #e8eaf0; border-radius: 14px; box-shadow: 0 12px 40px rgba(31,35,41,.18); padding: 16px; color: #1f2329; }
 .bh-panel[hidden] { display: none; }
 .bh-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; cursor:move; user-select:none; touch-action:none; }
 .bh-title { font-size: 16px; font-weight: 700; }

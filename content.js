@@ -1,5 +1,5 @@
 (function () {
-  const state = { purpose: '表达兴趣', tone: '自然亲切', length: '标准', panel: null, button: null, currentJob: null, jobReadArmed: false, jobReadAttempts: new Map(), jobReadFailed: new Set(), jobStatusMessages: new Map(), clickProbeKeys: new Set(), realOpenKeys: new Set(), capturedJobKey: '', candidateRequestKey: '', candidateRequestAt: 0, registeredJobKey: '', conversationSignature: '', syncTimer: 0, jobDetectionStartedAt: 0, switchPendingUntil: 0, switchPreviousJobKey: '', syncInFlight: false, panelPosition: null };
+  const state = { purpose: '表达兴趣', tone: '自然亲切', length: '标准', panel: null, button: null, currentJob: null, jobReadArmed: false, jobReadAttempts: new Map(), jobReadFailed: new Set(), jobStatusMessages: new Map(), clickProbeKeys: new Set(), realOpenKeys: new Set(), capturedJobKey: '', candidateRequestKey: '', candidateRequestAt: 0, registeredJobKey: '', conversationSignature: '', syncTimer: 0, jobDetectionStartedAt: 0, switchPendingUntil: 0, switchPreviousJobKey: '', syncInFlight: false, panelPosition: null, conversationCache: { text: '', at: 0 } };
 
   function isJobReadAllowed() {
     return Boolean(state.panel && !state.panel.hidden && state.jobReadArmed);
@@ -57,6 +57,8 @@
   }
 
   function getConversation() {
+    // 同一事件循环内可能同时由面板、定时器和生成按钮请求上下文，短缓存可避免重复扫描。
+    if (Date.now() - state.conversationCache.at < 1200) return state.conversationCache.text;
     // 只读取当前聊天容器内的气泡，排除 AI 筛选、职位卡片、导航和助手面板。
     const scope = findConversationScope();
     const roots = [
@@ -65,7 +67,8 @@
       '[data-message-id]', '[data-msg-id]', '[class*="chat-item"]',
       '[class*="dialogue-item"]'
     ];
-    const nodes = [...scope.querySelectorAll(roots.join(','))]
+    // 新版 Boss 页面可能有数千个筛选/推荐节点，限制候选数量避免首次点击时阻塞主线程。
+    const nodes = [...scope.querySelectorAll(roots.join(','))].slice(-360)
       .filter(n => !n.closest('#bh-root') && !n.closest('button, textarea, input'))
       .filter(n => !/ai|筛选|推荐|candidate|职位卡|job-card|resume|简历|toolbar|sidebar|header|footer/i.test(String(n.className || '')))
       .filter(isInActiveChatArea)
@@ -73,17 +76,13 @@
         const text = (n.innerText || '').trim();
         if (!text || text.length > 300) return false;
         if (/^(AI筛选|智能筛选|相关推荐|快捷回复|查看职位|生成回复|拒绝|同意)$/.test(text)) return false;
-        // 如果一个候选节点包含另一个候选节点，优先保留更具体的内层节点，
-        // 避免把整个聊天页的文字当成一条消息。
-        return ![...n.querySelectorAll(roots.join(','))].some(child => {
-          return child !== n && (child.innerText || '').trim() === text;
-        });
+        return true;
       });
     let texts = nodes.map(n => (n.innerText || '').trim()).filter(Boolean);
 
     // 兼容页面 class 名变化：从带 message/msg 的短文本节点中兜底提取。
     if (!texts.length) {
-      texts = [...scope.querySelectorAll('[class*="message"], [class*="msg"]')]
+      texts = [...scope.querySelectorAll('[class*="message"], [class*="msg"]')].slice(-360)
         .filter(n => !n.closest('#bh-root') && !n.closest('button, textarea, input'))
         .filter(isInActiveChatArea)
         .map(n => (n.innerText || '').trim())
@@ -95,7 +94,9 @@
         unique.push(text);
       }
     }
-    return unique.slice(-10).join('\n');
+    const result = unique.slice(-10).join('\n');
+    state.conversationCache = { text: result, at: Date.now() };
+    return result;
   }
 
   function getActiveConversationMarker() {
@@ -906,6 +907,7 @@
     state.switchPendingUntil = Date.now() + 8000;
     document.querySelectorAll('[data-bh-active-job-target]').forEach(node => node.removeAttribute('data-bh-active-job-target'));
     state.conversationSignature = '';
+    state.conversationCache.at = 0;
     state.currentJob = null;
     state.registeredJobKey = '';
     state.candidateRequestKey = '';
@@ -930,6 +932,7 @@
       return element?.closest?.('#bh-root');
     });
     if (onlyAssistantChanges) return;
+    state.conversationCache.at = 0;
     clearTimeout(state.syncTimer);
     state.syncTimer = setTimeout(syncActiveConversation, 180);
   });
