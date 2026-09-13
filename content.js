@@ -1,5 +1,5 @@
 (function () {
-  const state = { purpose: '表达兴趣', tone: '自然亲切', length: '标准', panel: null, button: null, currentJob: null, jobReadArmed: false, jobReadAttempts: new Map(), jobReadFailed: new Set(), jobStatusMessages: new Map(), clickProbeKeys: new Set(), realOpenKeys: new Set(), capturedJobKey: '', candidateRequestKey: '', candidateRequestAt: 0, registeredJobKey: '', conversationSignature: '', syncTimer: 0, jobDetectionStartedAt: 0, switchPendingUntil: 0, switchPreviousJobKey: '', syncInFlight: false };
+  const state = { purpose: '表达兴趣', tone: '自然亲切', length: '标准', panel: null, button: null, currentJob: null, jobReadArmed: false, jobReadAttempts: new Map(), jobReadFailed: new Set(), jobStatusMessages: new Map(), clickProbeKeys: new Set(), realOpenKeys: new Set(), capturedJobKey: '', candidateRequestKey: '', candidateRequestAt: 0, registeredJobKey: '', conversationSignature: '', syncTimer: 0, jobDetectionStartedAt: 0, switchPendingUntil: 0, switchPreviousJobKey: '', syncInFlight: false, panelPosition: null };
 
   function isJobReadAllowed() {
     return Boolean(state.panel && !state.panel.hidden && state.jobReadArmed);
@@ -29,6 +29,24 @@
     return qs(['textarea', '[contenteditable="true"]', 'input[placeholder*="请输入"]', 'input[placeholder*="消息"]']);
   }
 
+  function findConversationScope() {
+    const composer = findComposer();
+    if (!composer) return document;
+    let node = composer.parentElement;
+    let best = document;
+    for (let depth = 0; node && depth < 9; depth += 1, node = node.parentElement) {
+      const textLength = String(node.innerText || '').trim().length;
+      const rect = node.getBoundingClientRect?.();
+      const className = String(node.className || '').toLowerCase();
+      const looksLikeChat = /chat|dialog|conversation|message|content|session|main/.test(className);
+      if (rect && rect.width >= 360 && rect.height >= 220 && textLength >= 40 && looksLikeChat) {
+        // 取距离输入框最近的聊天容器，避免外层 main 同时包含 AI 筛选侧栏。
+        if (best === document) best = node;
+      }
+    }
+    return best;
+  }
+
   function isInActiveChatArea(node) {
     const composer = findComposer();
     if (!composer || !node?.getBoundingClientRect) return true;
@@ -39,19 +57,22 @@
   }
 
   function getConversation() {
-    // 只读取聊天气泡，排除职位卡片、导航、快捷按钮和助手面板。
+    // 只读取当前聊天容器内的气泡，排除 AI 筛选、职位卡片、导航和助手面板。
+    const scope = findConversationScope();
     const roots = [
       '[class*="message-item"]', '[class*="message-content"]',
       '[class*="msg-item"]', '[class*="msg-content"]',
       '[data-message-id]', '[data-msg-id]', '[class*="chat-item"]',
       '[class*="dialogue-item"]'
     ];
-    const nodes = [...document.querySelectorAll(roots.join(','))]
+    const nodes = [...scope.querySelectorAll(roots.join(','))]
       .filter(n => !n.closest('#bh-root') && !n.closest('button, textarea, input'))
+      .filter(n => !/ai|筛选|推荐|candidate|职位卡|job-card|resume|简历|toolbar|sidebar|header|footer/i.test(String(n.className || '')))
       .filter(isInActiveChatArea)
       .filter(n => {
         const text = (n.innerText || '').trim();
         if (!text || text.length > 300) return false;
+        if (/^(AI筛选|智能筛选|相关推荐|快捷回复|查看职位|生成回复|拒绝|同意)$/.test(text)) return false;
         // 如果一个候选节点包含另一个候选节点，优先保留更具体的内层节点，
         // 避免把整个聊天页的文字当成一条消息。
         return ![...n.querySelectorAll(roots.join(','))].some(child => {
@@ -62,7 +83,7 @@
 
     // 兼容页面 class 名变化：从带 message/msg 的短文本节点中兜底提取。
     if (!texts.length) {
-      texts = [...document.querySelectorAll('[class*="message"], [class*="msg"]')]
+      texts = [...scope.querySelectorAll('[class*="message"], [class*="msg"]')]
         .filter(n => !n.closest('#bh-root') && !n.closest('button, textarea, input'))
         .filter(isInActiveChatArea)
         .map(n => (n.innerText || '').trim())
@@ -669,7 +690,7 @@
     if (state.panel) return;
     const panel = document.createElement('div');
     panel.id = 'bh-root'; panel.className = 'bh-panel'; panel.hidden = true;
-    panel.innerHTML = `<div class="bh-head"><div class="bh-title">✨ 高情商回复助手</div><button class="bh-close">×</button></div>
+    panel.innerHTML = `<div class="bh-head" title="拖动此处移动窗口"><div class="bh-title">✨ 高情商回复助手</div><button class="bh-close">×</button></div>
       <div class="bh-resume-state"></div>
       <div class="bh-job-state"></div>
       <label class="bh-upload"><input class="bh-file-input" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple><span>＋ 拖入或选择简历附件（PDF / Word）</span></label>
@@ -680,6 +701,33 @@
       <div><div style="font-size:12px;color:#646a73">长度</div><div class="bh-row" data-group="length"></div></div>
       <button class="bh-button bh-generate" style="width:100%;margin-top:4px">生成回复</button><div class="bh-results"></div>`;
     document.body.appendChild(panel); state.panel = panel;
+    chrome.storage.local.get(['bhPanelPosition'], ({ bhPanelPosition }) => {
+      if (!state.panel || !bhPanelPosition) return;
+      state.panelPosition = bhPanelPosition;
+      applyPanelPosition();
+    });
+    const head = panel.querySelector('.bh-head');
+    head.addEventListener('pointerdown', event => {
+      if (event.target.closest('.bh-close')) return;
+      const rect = panel.getBoundingClientRect();
+      const origin = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+      head.setPointerCapture?.(event.pointerId);
+      const move = moveEvent => {
+        const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+        const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+        const left = Math.min(maxLeft, Math.max(8, origin.left + moveEvent.clientX - origin.x));
+        const top = Math.min(maxTop, Math.max(8, origin.top + moveEvent.clientY - origin.y));
+        state.panelPosition = { left, top };
+        applyPanelPosition();
+      };
+      const end = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', end);
+        if (state.panelPosition) chrome.storage.local.set({ bhPanelPosition: state.panelPosition });
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', end, { once: true });
+    });
     const groups = { purpose: ['表达兴趣','争取面试机会','询问薪资','礼貌拒绝','继续追问岗位细节'], tone: ['自然亲切','正式专业'], length: ['简短','标准','详细'] };
     Object.entries(groups).forEach(([group, items]) => {
       const box = panel.querySelector(`[data-group="${group}"]`);
@@ -699,6 +747,19 @@
     panel.querySelector('.bh-clear-files').onclick = () => chrome.storage.local.remove(['attachmentProfiles'], () => { panel.querySelector('.bh-attachment-status').textContent = '已清除附件简历'; updateResumeState(); });
     updateResumeState();
     updateJobState();
+  }
+
+  function applyPanelPosition() {
+    if (!state.panel || !state.panelPosition) return;
+    const maxLeft = Math.max(8, window.innerWidth - state.panel.offsetWidth - 8);
+    const maxTop = Math.max(8, window.innerHeight - state.panel.offsetHeight - 8);
+    const left = Math.min(maxLeft, Math.max(8, Number(state.panelPosition.left) || 8));
+    const top = Math.min(maxTop, Math.max(8, Number(state.panelPosition.top) || 8));
+    state.panelPosition = { left, top };
+    state.panel.style.left = `${Math.round(left)}px`;
+    state.panel.style.top = `${Math.round(top)}px`;
+    state.panel.style.right = 'auto';
+    state.panel.style.bottom = 'auto';
   }
 
   function updateResumeState() {
@@ -762,7 +823,8 @@
       }
     } else {
       replies = makeReplies(context, profile, state.purpose, state.tone, state.length);
-      statusText = '未配置魔搭 API Key，已使用本地模板';
+      const providerName = apiSettings.provider === 'bailian' ? '阿里云百炼' : '魔搭';
+      statusText = `未配置${providerName} API Key，已使用本地模板`;
     }
     const results = state.panel.querySelector('.bh-results'); results.innerHTML = '';
     replies.forEach((reply, i) => {
@@ -786,13 +848,24 @@
     renderPanel();
     if (isResumePage() || isJobDetailPage()) return;
     if (state.button || !findComposer()) return;
-    const b = document.createElement('button'); b.className = 'bh-button'; b.textContent = '✨ 高情商回复'; b.type = 'button';
+    const b = document.createElement('button'); b.className = 'bh-button bh-main-button'; b.textContent = '✨ 高情商回复'; b.type = 'button';
     b.onclick = () => {
       state.panel.hidden = !state.panel.hidden;
       if (!state.panel.hidden) preparePanel();
       else cancelActiveJobRead();
     };
-    const composer = findComposer(); composer.parentElement?.appendChild(b); state.button = b;
+    document.body.appendChild(b); state.button = b;
+    positionMainButton();
+  }
+
+  function positionMainButton() {
+    if (!state.button || !document.contains(state.button)) return;
+    const composer = findComposer();
+    const rect = composer?.getBoundingClientRect?.();
+    if (!rect || rect.width < 120) return;
+    state.button.style.left = `${Math.round(Math.max(8, rect.left))}px`;
+    state.button.style.width = `${Math.round(Math.min(window.innerWidth - Math.max(8, rect.left) - 8, rect.width))}px`;
+    state.button.style.bottom = '2px';
   }
 
   chrome.runtime.onMessage.addListener(message => {
@@ -848,7 +921,8 @@
     if (changes.jobProfiles) updateJobState();
   });
 
-  setInterval(() => { if (!state.button || !document.contains(state.button)) { state.button = null; mountButton(); } }, 1500);
+  setInterval(() => { if (!state.button || !document.contains(state.button)) { state.button = null; mountButton(); } else positionMainButton(); }, 1500);
+  window.addEventListener('resize', positionMainButton);
   setInterval(mountResumeSync, 5000);
   const conversationObserver = new MutationObserver(mutations => {
     const onlyAssistantChanges = mutations.every(mutation => {
