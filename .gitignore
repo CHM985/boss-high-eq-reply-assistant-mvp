@@ -1,5 +1,6 @@
 # Project-specific ignores
 *.zip
+boss-high-eq-reply-assistant-v1.6.0-local/
 *.crx
 *.pem
 Thumbs.db
