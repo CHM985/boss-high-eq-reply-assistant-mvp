@@ -152,4 +152,5 @@ vite.config.ts.timestamp-*
 
 # Local extension packaging output
 boss-high-eq-reply-assistant-v*-local/
+boss-high-eq-reply-assistant-v1.6.3/
 boss-high-eq-reply-assistant-v*.zip
